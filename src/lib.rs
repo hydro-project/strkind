@@ -545,7 +545,11 @@ mod tests {
 
     #[test]
     fn ordering_is_by_content() {
-        let mut ids = [ThreadId::from("b"), ThreadId::from("a"), ThreadId::from("c")];
+        let mut ids = [
+            ThreadId::from("b"),
+            ThreadId::from("a"),
+            ThreadId::from("c"),
+        ];
         ids.sort();
         let sorted: Vec<&str> = ids.iter().map(|i| i.as_str()).collect();
         assert_eq!(sorted, ["a", "b", "c"]);
