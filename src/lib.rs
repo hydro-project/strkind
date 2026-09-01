@@ -1,89 +1,5 @@
-//! Semantic string newtypes, generic over their storage.
-//!
-//! `strkind` separates what a string *means* (its kind: a thread ID, a commit
-//! hash, a user name) from how it is *stored* (`String`, `&str`, `Arc<str>`,
-//! `Box<str>`, `SmolStr`, ...). The [`strkind!`] macro generates one newtype
-//! per kind, generic over any string-like storage:
-//!
-//! ```
-//! strkind::strkind! {
-//!     /// Identifies a conversation thread.
-//!     pub ThreadId;
-//!
-//!     /// A git commit hash.
-//!     pub CommitId;
-//! }
-//!
-//! // The default storage is `String`; the borrowed form is `&ThreadId<str>`,
-//! // mirroring the `String`/`str` pair with a single type name.
-//! let owned: ThreadId = ThreadId::from("thread-7");
-//! let borrowed: &ThreadId<str> = &owned; // deref coercion
-//! assert_eq!(borrowed, ThreadId::from_ref("thread-7"));
-//!
-//! // Other storages plug in without a new type name.
-//! use std::sync::Arc;
-//! let shared: ThreadId<Arc<str>> = owned.clone().convert();
-//! assert_eq!(shared, owned); // storages compare directly
-//! ```
-//!
-//! # Generated API
-//!
-//! For each kind `Name`, the macro generates:
-//!
-//! - `struct Name<T: ?Sized + AsRef<str> = String>(T)` with a private field,
-//!   keeping the representation encapsulated (the `String` default requires
-//!   the `alloc` feature).
-//! - `Name::new(storage)` to wrap any storage, `into_inner` to unwrap.
-//! - `Name::from_ref(&str) -> &Name<str>` - a `const`, zero-copy cast for
-//!   borrowed values, the same way `Path::new` casts `&str` to `&Path`.
-//! - `as_str`, and `convert::<U>()` for changing storage (e.g. `String` →
-//!   `Arc<str>`), preserving the kind.
-//! - `Display`, `Debug`, `Clone`, `AsRef<str>`, `From<&str>` (for the
-//!   default `String` storage, keeping unannotated `Name::from("..")`
-//!   unambiguous; requires `alloc`), and an infallible `FromStr` for any
-//!   storage constructible `From<&str>`.
-//! - Cross-storage `PartialEq`/`PartialOrd` (any two storages of the *same
-//!   kind* compare; different kinds never do), plus `Eq`, `Ord`, and a `Hash`
-//!   that is uniform across storages.
-//! - `Deref<Target = Name<str>>` for owned storages, and
-//!   `Borrow<Name<str>>`/`ToOwned` (`ToOwned` requires `alloc`), so
-//!   `HashMap<Name, V>` and `BTreeMap<Name, V>` support lookup by
-//!   `&Name<str>` - mirroring how `HashMap<String, V>` supports lookup by
-//!   `&str`.
-//! - `Serialize`/`Deserialize` delegating to the storage (a kind serializes
-//!   exactly like the plain string, including as a JSON map key). Requires
-//!   the `serde` feature, which is on by default.
-//!
-//! # Comparison with similar crates
-//!
-//! - [`aliri_braid`](https://docs.rs/aliri_braid) generates an owned/borrowed
-//!   *pair* of types per kind (the `PathBuf`/`Path` pattern). `strkind`
-//!   generates a single type whose storage is a parameter, so third-party
-//!   storages (`Arc<str>`, `SmolStr`, ...) work without new type names.
-//! - [`nutype`](https://docs.rs/nutype) focuses on *validated* newtypes over
-//!   many inner types. `strkind` deliberately does no validation: it is
-//!   purely about naming kinds of strings and being generic over their
-//!   storage.
-//!
-//! # Features and `no_std`
-//!
-//! `strkind` is `#![no_std]`-compatible. Feature flags:
-//!
-//! - `std` *(default)*: currently just enables `alloc` (and serde's `std`
-//!   when both are active).
-//! - `alloc`: the `alloc`-backed API - the `String` **default** storage
-//!   parameter, `From<&str>`, and `ToOwned` for the borrowed form. Without
-//!   it, kinds are core-only: explicit storages (`Name<&str>`,
-//!   `Name<heapless::String<N>>`, ...) and the borrowed `&Name<str>` form
-//!   still work, but `Name` must be written with an explicit storage
-//!   parameter.
-//! - `serde` *(default)*: `Serialize`/`Deserialize` for generated kinds.
-//!
-//! Which impls a downstream `strkind!` expansion gets is decided by
-//! *strkind's* features, not the downstream crate's: the feature-dependent
-//! pieces are emitted through helper macros that are themselves `cfg`-gated
-//! inside strkind.
-
+#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/", env!("CARGO_PKG_README")))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 #![no_std]
 
 #[cfg(feature = "alloc")]
@@ -109,8 +25,8 @@ pub mod __private {
 
 /// Define one or more string kinds.
 ///
-/// Each item is `[visibility] Name;`. See the [crate docs](crate) for the
-/// full generated API.
+/// Each item is `[visibility] Name;`. For the full generated API, see the
+/// [`example::ExampleId`]'s impls.
 ///
 /// ```
 /// strkind::strkind! {
@@ -367,6 +283,20 @@ macro_rules! __strkind_serde {
 #[macro_export]
 macro_rules! __strkind_serde {
     ( $Name:ident ) => {};
+}
+
+/// Example expansion of the [`strkind!`] macro, as rendered documentation.
+///
+/// Gated behind the internal `_example` feature (enabled when building the
+/// docs); it is **not** part of the crate's API - do not use it.
+#[cfg(feature = "_example")]
+#[cfg_attr(docsrs, doc(cfg(feature = "_example")))]
+pub mod example {
+    strkind! {
+        /// An example kind, showing everything [`strkind!`](crate::strkind)
+        /// generates for the declaration `pub ExampleId;`.
+        pub ExampleId;
+    }
 }
 
 /// Tests that require no strkind features: the core-only surface.

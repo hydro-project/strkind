@@ -53,30 +53,17 @@ pub struct ThreadId<T: ?Sized + AsRef<str> = String>(T);
 
 ## Generated API
 
-For each kind `Name`, the `strkind!` macro generates:
+Each kind is a single `#[repr(transparent)]` struct with a private field,
+generic over its storage, mirroring the `String`/`str` pattern with one type
+name: constructors (`new`, `From<&str>`/`FromStr`, and zero-copy `from_ref` —
+the same cast as `Path::new`), `convert::<U>()` for changing storage,
+cross-storage comparisons and a storage-uniform `Hash`,
+`Deref`/`Borrow`/`ToOwned` (so maps keyed by any storage support lookup by
+`&Name<str>`), and transparent serde.
 
-- `struct Name<T: ?Sized + AsRef<str> = String>(T)` with a private field,
-  keeping the representation encapsulated.
-- `Name::new(storage)` to wrap any storage, `into_inner` to unwrap.
-- `Name::from_ref(&str) -> &Name<str>` — a `const`, zero-copy cast for
-  borrowed values, the same way `Path::new` casts `&str` to `&Path`.
-- `as_str`, and `convert::<U>()` for changing storage (e.g. `String` →
-  `Arc<str>`), preserving the kind.
-- `Display`, `Debug`, `Clone`, `AsRef<str>`, `From<&str>` (for the default
-  `String` storage, keeping unannotated `Name::from("..")` unambiguous), and
-  an infallible `FromStr` for any storage constructible `From<&str>`.
-- Cross-storage `PartialEq`/`PartialOrd` (any two storages of the *same kind*
-  compare; different kinds never do), plus `Eq`, `Ord`, and a `Hash` that is
-  uniform across storages.
-- `Deref<Target = Name<str>>` for owned storages, and
-  `Borrow<Name<str>>`/`ToOwned` — generalized over any `Deref<Target = str>`
-  storage, not just `String` — so `HashMap<Name<AnyStorage>, V>` and
-  `BTreeMap<Name<AnyStorage>, V>` support lookup by `&Name<str>`, mirroring
-  how `HashMap<String, V>` supports lookup by `&str`. `Hash` going through
-  `as_ref()` uniformly is what upholds the `Borrow` contract across storages.
-- `Serialize`/`Deserialize` delegating to the storage: a kind serializes
-  exactly like the plain string, including as a JSON map key. (Requires the
-  `serde` feature, on by default.)
+Rather than listing every generated item here, see the full rendered API of
+an example kind at
+[`example::ExampleId`](https://docs.rs/strkind/latest/strkind/example/struct.ExampleId.html).
 
 Downstream traits can stay monomorphic and object-safe by taking
 `&Name<str>` in their methods, containing the generic machinery to the types
@@ -99,13 +86,16 @@ themselves.
 
 ## Features and `no_std`
 
-`strkind` is `#![no_std]`-compatible.
+`strkind` is `#![no_std]`-compatible. MSRV is Rust 1.85.
 
-| Feature | Default | Effect                                            |
-|---------|---------|---------------------------------------------------|
-| `std`   | ✔       | Currently just enables `alloc` (and forwards to `serde/std`). |
-| `alloc` |         | The `alloc`-backed API: the `String` **default** storage parameter, `From<&str>`, and `ToOwned` for the borrowed form. |
-| `serde` | ✔       | `Serialize`/`Deserialize` for generated kinds.    |
+| Feature | Effect                                            |
+|---------|---------------------------------------------------|
+| `std`   | Currently just enables `alloc` (and forwards to `serde/std`). |
+| `alloc` | The `alloc`-backed API: the `String` **default** storage parameter, `From<&str>`, and `ToOwned` for the borrowed form (also forwards to `serde/alloc`). |
+| `serde` | `Serialize`/`Deserialize` for generated kinds.    |
+
+The default features are `std` and `serde` (and therefore `alloc`, via
+`std`).
 
 Without `alloc`, kinds are core-only: explicit storages (`Name<&str>`,
 `Name<heapless::String<N>>`, ...) and the borrowed `&Name<str>` form still

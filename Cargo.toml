@@ -10,7 +10,7 @@ edition = "2024"
 rust-version = "1.85"
 license = "Apache-2.0"
 keywords = ["newtype", "string", "id", "typed", "storage"]
-categories = ["data-structures", "rust-patterns"]
+categories = ["data-structures", "rust-patterns", "no-std"]
 
 [workspace]
 # Empty: this crate is its own workspace.
@@ -19,6 +19,9 @@ categories = ["data-structures", "rust-patterns"]
 default = ["std", "serde"]
 # Currently just enables `alloc` (and forwards to `serde/std`).
 std = ["alloc", "serde?/std"]
+# Internal: an `example` module showing what `strkind!` generates, as rendered
+# documentation (enabled on docs.rs). Not part of the crate's API; do not use.
+_example = []
 # `alloc`-backed API: the `String` default storage parameter, `From<&str>`,
 # and `ToOwned` for the borrowed form. Without it, kinds are core-only:
 # explicit storages (`Name<&str>`, `Name<heapless::String<N>>`, ...) and the
@@ -26,6 +29,9 @@ std = ["alloc", "serde?/std"]
 alloc = ["serde?/alloc"]
 # Implement `Serialize`/`Deserialize` for generated kinds.
 serde = ["dep:serde"]
+
+[package.metadata.docs.rs]
+all-features = true
 
 [dependencies]
 # `1.0.95` is the minimal version that compiles on modern rustc (verified by
@@ -40,6 +46,7 @@ strkind = { path = ".", features = ["std"] }
 [lints.rust]
 elided_lifetimes_in_paths = "warn"
 impl_trait_overcaptures = "warn"
+missing_docs = "warn"
 missing_unsafe_on_extern = "deny"
 unsafe_attr_outside_unsafe = "deny"
 unused_qualifications = "warn"
@@ -56,6 +63,7 @@ let_and_return = "allow"
 manual_is_variant_and = "warn"
 manual_let_else = "warn"
 manual_ok_or = "warn"
+missing_const_for_fn = "warn"
 # needless_pass_by_value = "warn" # TODO(mingwei): causes many breaking changes
 or_fun_call = "warn"
 ptr_as_ptr = "warn"

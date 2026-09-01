@@ -41,6 +41,7 @@ pass 'All code is formatted'
 
 step 'Clippy across the feature matrix (warnings denied)'
 cargo clippy --all-targets -- -D warnings || fail 'clippy warnings found (default features)'
+cargo clippy --all-targets --all-features -- -D warnings || fail 'clippy warnings found (all features)'
 for combo in "${FEATURE_COMBOS[@]}"; do
     cargo clippy --all-targets --no-default-features --features "$combo" -- -D warnings \
         || fail "clippy warnings found (features: '$combo')"
