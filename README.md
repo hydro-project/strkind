@@ -62,8 +62,9 @@ For each kind `Name`, the `strkind!` macro generates:
   borrowed values, the same way `Path::new` casts `&str` to `&Path`.
 - `as_str`, and `convert::<U>()` for changing storage (e.g. `String` →
   `Arc<str>`), preserving the kind.
-- `Display`, `Debug`, `Clone`, `AsRef<str>`, `From<&str>`, and an infallible
-  `FromStr`.
+- `Display`, `Debug`, `Clone`, `AsRef<str>`, `From<&str>` (for the default
+  `String` storage, keeping unannotated `Name::from("..")` unambiguous), and
+  an infallible `FromStr` for any storage constructible `From<&str>`.
 - Cross-storage `PartialEq`/`PartialOrd` (any two storages of the *same kind*
   compare; different kinds never do), plus `Eq`, `Ord`, and a `Hash` that is
   uniform across storages.
@@ -96,11 +97,23 @@ themselves.
   long-lived processes. When distinct live IDs number in the hundreds,
   `Arc`-backed storage already makes clones O(1) without any of that.
 
-## Features
+## Features and `no_std`
+
+`strkind` is `#![no_std]`-compatible.
 
 | Feature | Default | Effect                                            |
 |---------|---------|---------------------------------------------------|
+| `std`   | ✔       | Currently just enables `alloc` (and forwards to `serde/std`). |
+| `alloc` |         | The `alloc`-backed API: the `String` **default** storage parameter, `From<&str>`, and `ToOwned` for the borrowed form. |
 | `serde` | ✔       | `Serialize`/`Deserialize` for generated kinds.    |
+
+Without `alloc`, kinds are core-only: explicit storages (`Name<&str>`,
+`Name<heapless::String<N>>`, ...) and the borrowed `&Name<str>` form still
+work, but `Name` must always be written with an explicit storage parameter.
+
+Which impls a downstream `strkind!` expansion gets is decided by *strkind's*
+features, not the downstream crate's: the feature-dependent pieces are
+emitted through helper macros that are themselves `cfg`-gated inside strkind.
 
 ## License
 

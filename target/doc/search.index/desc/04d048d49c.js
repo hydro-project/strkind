@@ -1,1 +1,0 @@
-rd_("CeSemantic string newtypes, generic over their storage.B`Define one or more string kinds.")

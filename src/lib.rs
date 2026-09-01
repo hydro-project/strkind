@@ -31,21 +31,25 @@
 //! For each kind `Name`, the macro generates:
 //!
 //! - `struct Name<T: ?Sized + AsRef<str> = String>(T)` with a private field,
-//!   keeping the representation encapsulated.
+//!   keeping the representation encapsulated (the `String` default requires
+//!   the `alloc` feature).
 //! - `Name::new(storage)` to wrap any storage, `into_inner` to unwrap.
 //! - `Name::from_ref(&str) -> &Name<str>` - a `const`, zero-copy cast for
 //!   borrowed values, the same way `Path::new` casts `&str` to `&Path`.
 //! - `as_str`, and `convert::<U>()` for changing storage (e.g. `String` →
 //!   `Arc<str>`), preserving the kind.
-//! - `Display`, `Debug`, `Clone`, `AsRef<str>`, `From<&str>`, and an
-//!   infallible `FromStr`.
+//! - `Display`, `Debug`, `Clone`, `AsRef<str>`, `From<&str>` (for the
+//!   default `String` storage, keeping unannotated `Name::from("..")`
+//!   unambiguous; requires `alloc`), and an infallible `FromStr` for any
+//!   storage constructible `From<&str>`.
 //! - Cross-storage `PartialEq`/`PartialOrd` (any two storages of the *same
 //!   kind* compare; different kinds never do), plus `Eq`, `Ord`, and a `Hash`
 //!   that is uniform across storages.
 //! - `Deref<Target = Name<str>>` for owned storages, and
-//!   `Borrow<Name<str>>`/`ToOwned`, so `HashMap<Name, V>` and
-//!   `BTreeMap<Name, V>` support lookup by `&Name<str>` - mirroring how
-//!   `HashMap<String, V>` supports lookup by `&str`.
+//!   `Borrow<Name<str>>`/`ToOwned` (`ToOwned` requires `alloc`), so
+//!   `HashMap<Name, V>` and `BTreeMap<Name, V>` support lookup by
+//!   `&Name<str>` - mirroring how `HashMap<String, V>` supports lookup by
+//!   `&str`.
 //! - `Serialize`/`Deserialize` delegating to the storage (a kind serializes
 //!   exactly like the plain string, including as a JSON map key). Requires
 //!   the `serde` feature, which is on by default.
@@ -60,11 +64,46 @@
 //!   many inner types. `strkind` deliberately does no validation: it is
 //!   purely about naming kinds of strings and being generic over their
 //!   storage.
+//!
+//! # Features and `no_std`
+//!
+//! `strkind` is `#![no_std]`-compatible. Feature flags:
+//!
+//! - `std` *(default)*: currently just enables `alloc` (and serde's `std`
+//!   when both are active).
+//! - `alloc`: the `alloc`-backed API - the `String` **default** storage
+//!   parameter, `From<&str>`, and `ToOwned` for the borrowed form. Without
+//!   it, kinds are core-only: explicit storages (`Name<&str>`,
+//!   `Name<heapless::String<N>>`, ...) and the borrowed `&Name<str>` form
+//!   still work, but `Name` must be written with an explicit storage
+//!   parameter.
+//! - `serde` *(default)*: `Serialize`/`Deserialize` for generated kinds.
+//!
+//! Which impls a downstream `strkind!` expansion gets is decided by
+//! *strkind's* features, not the downstream crate's: the feature-dependent
+//! pieces are emitted through helper macros that are themselves `cfg`-gated
+//! inside strkind.
 
-// Re-exports for macro-generated code. Not public API.
-#[cfg(feature = "serde")]
+#![no_std]
+
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
+#[cfg(test)]
+extern crate std;
+
+// Re-exports for macro-generated code. Not a public API.
+//
+// `::alloc` is not in the extern prelude, so expanded code cannot name it in
+// downstream crates that lack their own `extern crate alloc;` - paths through
+// `$crate::__private` are the only ones guaranteed to resolve.
 #[doc(hidden)]
 pub mod __private {
+    #[cfg(feature = "alloc")]
+    pub use alloc::borrow::ToOwned;
+    #[cfg(feature = "alloc")]
+    pub use alloc::string::String;
+    #[cfg(feature = "serde")]
     pub use serde;
 }
 
@@ -94,10 +133,7 @@ macro_rules! strkind {
         $vis:vis $Name:ident ;
         $($rest:tt)*
     ) => {
-        $(#[$meta])*
-        #[derive(Debug, Clone)]
-        #[repr(transparent)]
-        $vis struct $Name<T: ?Sized + AsRef<str> = ::std::string::String>(T);
+        $crate::__strkind_struct! { $(#[$meta])* $vis $Name }
 
         impl<T: AsRef<str>> $Name<T> {
             /// Wrap `storage` as this kind.
@@ -182,6 +218,15 @@ macro_rules! strkind {
             }
         }
 
+        impl<T: AsRef<str> + for<'a> ::core::convert::From<&'a str>> ::core::str::FromStr
+            for $Name<T>
+        {
+            type Err = ::core::convert::Infallible;
+            fn from_str(s: &str) -> ::core::result::Result<Self, Self::Err> {
+                ::core::result::Result::Ok(Self(T::from(s)))
+            }
+        }
+
         // ── The `String`/`str` pattern ──
 
         impl<T: ?Sized + AsRef<str> + ::core::ops::Deref<Target = str>> ::core::ops::Deref
@@ -194,46 +239,99 @@ macro_rules! strkind {
         }
 
         impl<T: AsRef<str> + ::core::ops::Deref<Target = str>>
-            ::std::borrow::Borrow<$Name<str>> for $Name<T>
+            ::core::borrow::Borrow<$Name<str>> for $Name<T>
         {
             fn borrow(&self) -> &$Name<str> {
                 self
             }
         }
 
-        impl ::std::borrow::ToOwned for $Name<str> {
-            type Owned = $Name<::std::string::String>;
-            fn to_owned(&self) -> Self::Owned {
-                $Name(self.0.to_owned())
-            }
-        }
+        // `alloc`-backed impls (`ToOwned`, `From<&str>`), if feature is enabled.
+        $crate::__strkind_alloc! { $Name }
 
-        impl ::core::convert::From<&str> for $Name<::std::string::String> {
-            fn from(s: &str) -> Self {
-                Self(s.to_owned())
-            }
-        }
-
-        impl ::core::str::FromStr for $Name<::std::string::String> {
-            type Err = ::core::convert::Infallible;
-            fn from_str(s: &str) -> ::core::result::Result<Self, Self::Err> {
-                ::core::result::Result::Ok(Self(s.to_owned()))
-            }
-        }
-
-        // ── Serde (with the `serde` feature): a kind serializes exactly
-        // like its storage ──
-
+        // Serde impls, if feature is enabled.
         $crate::__strkind_serde! { $Name }
 
         $crate::strkind! { $($rest)* }
     };
 }
 
-/// Serde impls for a generated kind - expands to nothing when strkind is
-/// built without the `serde` feature. Not public API.
+/// The struct definition for a kind. With strkind's `alloc` feature the
+/// storage parameter defaults to `String`; without it there is no default
+/// (macros cannot expand in default-type-parameter position, hence the
+/// duplicated definition). Not a public API.
 ///
-/// The feature is resolved when *strkind* is compiled (the two definitions
+/// The feature is resolved when _strkind_ is compiled (the two definitions
+/// below are `cfg`-gated), so downstream expansions of [`strkind!`] follow
+/// strkind's feature rather than the downstream crate's.
+#[cfg(feature = "alloc")]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __strkind_struct {
+    ( $(#[$meta:meta])* $vis:vis $Name:ident ) => {
+        $(#[$meta])*
+        #[derive(Debug, Clone)]
+        #[repr(transparent)]
+        $vis struct $Name<T: ?Sized + AsRef<str> = $crate::__private::String>(T);
+    };
+}
+
+#[cfg(not(feature = "alloc"))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __strkind_struct {
+    ( $(#[$meta:meta])* $vis:vis $Name:ident ) => {
+        $(#[$meta])*
+        #[derive(Debug, Clone)]
+        #[repr(transparent)]
+        $vis struct $Name<T: ?Sized + AsRef<str>>(T);
+    };
+}
+
+/// `alloc`-backed impls for a generated kind - expands to empty without the
+/// `alloc` feature. Not a public API.
+///
+/// Paths go through `$crate::__private` because `::alloc` is not in the
+/// extern prelude of downstream crates, and calls are fully qualified because
+/// the `no_std` prelude does not include `ToOwned`.
+///
+/// The feature is resolved when _strkind_ is compiled (the two definitions
+/// below are `cfg`-gated), so downstream expansions of [`strkind!`] follow
+/// strkind's feature rather than the downstream crate's.
+#[cfg(feature = "alloc")]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __strkind_alloc {
+    ( $Name:ident ) => {
+        impl $crate::__private::ToOwned for $Name<str> {
+            type Owned = $Name<$crate::__private::String>;
+            fn to_owned(&self) -> Self::Owned {
+                $Name($crate::__private::ToOwned::to_owned(&self.0))
+            }
+        }
+
+        impl ::core::convert::From<&str> for $Name<$crate::__private::String> {
+            fn from(s: &str) -> Self {
+                Self($crate::__private::ToOwned::to_owned(s))
+            }
+        }
+    };
+}
+
+#[cfg(not(feature = "alloc"))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __strkind_alloc {
+    ( $Name:ident ) => {};
+}
+
+/// Serde impls for a generated kind - expands to empty without the `serde`
+/// feature. Not a public API.
+///
+/// Impl is equivalent to `#[serde(transparent)]` but without requiring `serde`'s
+/// `derive` feature.
+///
+/// The feature is resolved when _strkind_ is compiled (the two definitions
 /// below are `cfg`-gated), so downstream expansions of [`strkind!`] follow
 /// strkind's feature rather than the downstream crate's.
 #[cfg(feature = "serde")]
@@ -263,7 +361,7 @@ macro_rules! __strkind_serde {
         }
     };
 }
-
+/// Empty without `serde` feature.
 #[cfg(not(feature = "serde"))]
 #[doc(hidden)]
 #[macro_export]
@@ -271,9 +369,34 @@ macro_rules! __strkind_serde {
     ( $Name:ident ) => {};
 }
 
+/// Tests that require no strkind features: the core-only surface.
 #[cfg(test)]
+mod core_tests {
+    strkind! {
+        /// Usable without `alloc`: no `String` default, but explicit storages
+        /// and the borrowed `&CoreId<str>` form work.
+        pub(crate) CoreId;
+    }
+
+    #[test]
+    fn core_only_surface() {
+        const A: &CoreId<str> = CoreId::from_ref("a");
+        assert_eq!(A.as_str(), "a");
+
+        let b: CoreId<&str> = CoreId::new("a");
+        assert_eq!(A, &b); // cross-storage comparison
+        assert!(A <= &b);
+
+        let c: CoreId<&str> = b.clone().convert();
+        assert_eq!(c.into_inner(), "a");
+    }
+}
+
+#[cfg(all(test, feature = "alloc"))]
 mod tests {
     use std::collections::{BTreeMap, HashMap};
+    use std::format;
+    use std::prelude::rust_2024::*;
     use std::sync::Arc;
 
     use smol_str::SmolStr;
@@ -305,6 +428,12 @@ mod tests {
         assert_eq!(id.as_str(), "thread-7");
         let parsed: ThreadId = "thread-7".parse().expect("infallible");
         assert_eq!(parsed, id);
+
+        // `FromStr` is generic over any storage constructible `From<&str>`.
+        let small: ThreadId<SmolStr> = "thread-7".parse().expect("infallible");
+        let shared: ThreadId<Arc<str>> = "thread-7".parse().expect("infallible");
+        assert_eq!(small, id);
+        assert_eq!(shared, id);
     }
 
     #[test]
