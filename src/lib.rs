@@ -226,9 +226,23 @@ macro_rules! __strkind_alloc {
             }
         }
 
+        // The `From` impls are pinned to the `String` storage, NOT generic
+        // over `T: From<&str>` storages, deliberately: a generic impl would
+        // break every unannotated `Name::from("..")` call site, because `T`
+        // becomes an unconstrained inference variable - type-parameter
+        // defaults do not participate in expression inference (the
+        // never-stabilized `default_type_parameter_fallback`). Construction
+        // with other storages goes through `new` or the (storage-generic)
+        // `FromStr`.
         impl ::core::convert::From<&str> for $Name<$crate::__private::String> {
             fn from(s: &str) -> Self {
                 Self($crate::__private::ToOwned::to_owned(s))
+            }
+        }
+
+        impl ::core::convert::From<$crate::__private::String> for $Name<$crate::__private::String> {
+            fn from(s: $crate::__private::String) -> Self {
+                Self(s)
             }
         }
     };
@@ -356,6 +370,12 @@ mod tests {
     fn from_and_from_str() {
         let id = ThreadId::from("thread-7");
         assert_eq!(id.as_str(), "thread-7");
+
+        // `From<String>`, so an owned string doesn't force `new` (and
+        // `.map(ThreadId::from)` etc. work).
+        let from_owned = ThreadId::from("thread-7".to_owned());
+        assert_eq!(from_owned, id);
+
         let parsed: ThreadId = "thread-7".parse().expect("infallible");
         assert_eq!(parsed, id);
 

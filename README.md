@@ -55,7 +55,8 @@ pub struct ThreadId<T: ?Sized + AsRef<str> = String>(T);
 
 Each kind is a single `#[repr(transparent)]` struct with a private field,
 generic over its storage, mirroring the `String`/`str` pattern with one type
-name: constructors (`new`, `From<&str>`/`FromStr`, and zero-copy `from_ref` —
+name: constructors (`new`, `From<&str>`/`From<String>`/`FromStr`, and
+zero-copy `from_ref` —
 the same cast as `Path::new`), `convert::<U>()` for changing storage,
 cross-storage comparisons and a storage-uniform `Hash`,
 `Deref`/`Borrow`/`ToOwned` (so maps keyed by any storage support lookup by
@@ -91,7 +92,7 @@ themselves.
 | Feature | Effect                                            |
 |---------|---------------------------------------------------|
 | `std`   | Currently just enables `alloc` (and forwards to `serde/std`). |
-| `alloc` | The `alloc`-backed API: the `String` **default** storage parameter, `From<&str>`, and `ToOwned` for the borrowed form (also forwards to `serde/alloc`). |
+| `alloc` | The `alloc`-backed API: the `String` **default** storage parameter, `From<&str>`/`From<String>`, and `ToOwned` for the borrowed form (also forwards to `serde/alloc`). |
 | `serde` | `Serialize`/`Deserialize` for generated kinds.    |
 
 The default features are `std` and `serde` (and therefore `alloc`, via
