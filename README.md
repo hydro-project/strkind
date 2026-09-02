@@ -60,7 +60,8 @@ zero-copy `from_ref` —
 the same cast as `Path::new`), `convert::<U>()` for changing storage,
 cross-storage comparisons and a storage-uniform `Hash`,
 `Deref`/`Borrow`/`ToOwned` (so maps keyed by any storage support lookup by
-`&Name<str>`), and transparent serde.
+`&Name<str>`), `AsRef<str>` and `AsRef<Name<str>>` (so APIs can take
+`impl AsRef<Name<str>>` over any storage), and transparent serde.
 
 Rather than listing every generated item here, see the full rendered API of
 an example kind at

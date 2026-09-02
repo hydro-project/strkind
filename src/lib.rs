@@ -92,6 +92,17 @@ macro_rules! strkind {
             }
         }
 
+        // The `PathBuf: AsRef<Path>` analog: lets APIs take
+        // `impl AsRef<Name<str>>` and accept any storage. With `T = str` this
+        // is also the reflexive `Name<str>: AsRef<Name<str>>` such bounds
+        // need (which `std` writes by hand for `Path`). Unlike `Deref`, this
+        // requires only `T: AsRef<str>`, not `T: Deref<Target = str>`.
+        impl<T: ?Sized + AsRef<str>> ::core::convert::AsRef<$Name<str>> for $Name<T> {
+            fn as_ref(&self) -> &$Name<str> {
+                $Name::from_ref(self.0.as_ref())
+            }
+        }
+
         impl<T: ?Sized + AsRef<str>> ::core::fmt::Display for $Name<T> {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 ::core::fmt::Display::fmt(self.0.as_ref(), f)
@@ -333,6 +344,14 @@ mod core_tests {
 
         let c: CoreId<&str> = b.clone().convert();
         assert_eq!(c.into_inner(), "a");
+
+        // `AsRef<CoreId<str>>` works without `alloc`, for any storage and
+        // reflexively for the borrowed form.
+        fn takes_kinded(id: &(impl ?Sized + AsRef<CoreId<str>>)) -> &str {
+            id.as_ref().as_str()
+        }
+        assert_eq!(takes_kinded(&b), "a");
+        assert_eq!(takes_kinded(A), "a");
     }
 }
 
@@ -400,6 +419,33 @@ mod tests {
         }
         let owned = ThreadId::from("thread-7");
         assert_eq!(takes_borrowed(&owned), "thread-7");
+    }
+
+    #[test]
+    fn as_ref_kinded_bound() {
+        fn takes_any_storage(id: impl AsRef<ThreadId<str>>) -> String {
+            id.as_ref().as_str().to_owned()
+        }
+
+        let owned = ThreadId::from("thread-7");
+        let shared: ThreadId<Arc<str>> = owned.clone().convert();
+        let borrowed: &ThreadId<str> = ThreadId::from_ref("thread-7");
+
+        assert_eq!(takes_any_storage(&owned), "thread-7");
+        assert_eq!(takes_any_storage(owned), "thread-7");
+        assert_eq!(takes_any_storage(shared), "thread-7");
+        assert_eq!(takes_any_storage(borrowed), "thread-7"); // reflexive, via `&T` forwarding
+    }
+
+    #[test]
+    fn as_ref_str_still_available() {
+        fn takes_stringish(s: impl AsRef<str>) -> String {
+            s.as_ref().to_owned()
+        }
+        assert_eq!(takes_stringish(ThreadId::from("thread-7")), "thread-7");
+        let id = ThreadId::from("thread-7");
+        let s: &str = id.as_ref(); // annotated target disambiguates
+        assert_eq!(s, "thread-7");
     }
 
     #[test]
