@@ -1,0 +1,32 @@
+# Verification test for strkind's `verus` feature. Not published; excluded
+# from the strkind package. Verified by `cargo verus verify` (see ../check.bash
+# and CI), and also built under plain cargo to prove a `verus`-feature-enabled
+# consumer compiles warning-free without the Verus driver.
+#
+# The `vstd` version is pinned to the Verus release used in CI; the two must
+# match (vstd is Verus-version-coupled).
+
+[package]
+name = "strkind-verus-test"
+publish = false
+version = "0.0.0"
+edition = "2024"
+
+[workspace]
+# Empty: standalone, not part of the strkind workspace.
+
+[dependencies]
+strkind = { path = "..", features = ["std", "serde", "verus"] }
+vstd = "=0.0.0-2026-10-04-0306"
+
+[package.metadata.verus]
+verify = true
+
+[lints.rust]
+# A consumer denying `unsafe_code` must still compile: the emitted
+# `assume_specification` axioms expand to unsafe-marked items, and the
+# expansion carries its own scoped `allow` (regression test for that).
+unsafe_code = "deny"
+# For the crate-root `#![cfg_attr(verus_keep_ghost, ...)]` (the cfgs inside
+# macro-emitted code carry their own scoped `allow`s and do not need this).
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(verus_keep_ghost)"] }

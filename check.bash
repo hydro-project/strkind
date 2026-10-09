@@ -21,6 +21,9 @@ FEATURE_COMBOS=(
     'alloc,serde'
     'std'
     'std,serde'
+    'verus'
+    'alloc,verus'
+    'std,serde,verus'
 )
 
 step 'Prerequisites'
@@ -59,6 +62,21 @@ pass 'All tests passed in every feature combination'
 step 'Docs (warnings denied)'
 RUSTDOCFLAGS='-D warnings' cargo doc --no-deps --all-features || fail 'rustdoc warnings found'
 pass 'Docs build cleanly'
+
+step 'Verus verification test crate (verus-test/)'
+# A `verus`-feature consumer must compile warning-free under plain cargo
+# (the ghost blocks are cfg'd away; vstd compiles as an ordinary dependency).
+(cd verus-test && cargo check --all-targets) || fail 'plain-cargo check of verus-test failed'
+pass 'verus-test compiles under plain cargo'
+# Actual verification needs the Verus toolchain; skipped (loudly) without it.
+# The Verus release must match the `vstd` pin in verus-test/Cargo.toml and
+# the version in .github/workflows/ci.yml, where this always runs.
+if command -v cargo-verus > /dev/null 2>&1; then
+    (cd verus-test && cargo verus verify) || fail 'Verus verification failed'
+    pass 'verus-test verifies under the Verus driver'
+else
+    echo -e "${RED}skipped:${RESET} \`cargo-verus\` not found; Verus verification not run (CI runs it)"
+fi
 
 step 'MSRV (rust-version in Cargo.toml)'
 cargo msrv verify || fail 'MSRV verification failed'
