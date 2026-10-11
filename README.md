@@ -95,6 +95,7 @@ themselves.
 | `std`   | Currently just enables `alloc` (and forwards to `serde/std`). |
 | `alloc` | The `alloc`-backed API: the `String` **default** storage parameter, `From<&str>`/`From<String>`, and `ToOwned` for the borrowed form (also forwards to `serde/alloc`). |
 | `serde` | `Serialize`/`Deserialize` for generated kinds.    |
+| `verus` | A [Verus](https://github.com/verus-lang/verus) verification boundary for generated kinds (see below). Adds a feature-gated `vstd` dependency; ghost code compiles away under plain cargo. |
 
 The default features are `std` and `serde` (and therefore `alloc`, via
 `std`).
@@ -106,6 +107,75 @@ work, but `Name` must always be written with an explicit storage parameter.
 Which impls a downstream `strkind!` expansion gets is decided by *strkind's*
 features, not the downstream crate's: the feature-dependent pieces are
 emitted through helper macros that are themselves `cfg`-gated inside strkind.
+
+## Verus
+
+With the `verus` feature, `strkind!` additionally emits a
+[Verus](https://github.com/verus-lang/verus) verification boundary for each
+kind, so verified code can call `as_str` and reason about kinds by their
+string content. The feature adds [`vstd`](https://crates.io/crates/vstd) as a
+dependency of strkind (vstd is Verus-version-coupled: strkind declares a
+minimum, so pin the release matching your Verus toolchain in your lockfile).
+The emission sits inside `#[cfg(verus_keep_ghost)]` blocks — set only by the
+Verus driver — so under plain cargo the feature compiles to nothing beyond
+building vstd as an ordinary (ghost-erased) dependency. No other setup:
+strkind itself carries the Verus declarations the boundary needs (such as the
+external-trait specification for `AsRef`, which vstd does not yet provide),
+exported to consumers through the driver like vstd's own.
+
+(If you write your own `#[cfg(verus_keep_ghost)]` code, declare
+`unexpected_cfgs = { level = "warn", check-cfg = ["cfg(verus_keep_ghost)"] }`
+under `[lints.rust]` to keep plain-cargo builds warning-free; strkind's
+emitted blocks carry their own scoped `allow`s.)
+
+Each kind `Name` then carries, for every storage `T`:
+
+- an uninterpreted view: `impl View for Name<T>` with `type V = Seq<char>`
+  (vstd's `str`/`String` view type);
+- an uninterpreted purity marker `Name::<T>::storage_obeys_str_model()`,
+  granted by trusted axiom for the `String` and `str` storages
+  (`Name::axiom_string_storage_obeys_str_model`,
+  `Name::axiom_str_storage_obeys_str_model`);
+- a specification for `as_str`, conditioned on that marker:
+  `Name::<T>::storage_obeys_str_model() ==> s@ == id@`.
+
+So verified code compares kinds by content (vstd already specifies `&str`
+equality):
+
+```rust,ignore
+verus! {
+fn same_id(a: &ThreadId, b: &ThreadId) -> (r: bool)
+    ensures r == (a@ == b@),
+{
+    broadcast use ThreadId::axiom_string_storage_obeys_str_model;
+    a.as_str() == b.as_str()
+}
+}
+```
+
+**What is trusted.** One definitional axiom per kind (the view *is* whatever
+`as_str` returns — byte-for-byte the shape of vstd's own `String::as_str`
+axiom) plus two ground purity facts (`String`'s and `str`'s `AsRef<str>`
+impls are deterministic — true by inspection). The conditioning mirrors
+vstd's own pattern for user-implementable traits (`obeys_key_model` in
+`vstd::std_specs::hash`): a storage with a wrong or impure `AsRef<str>` impl
+simply gets *no* `as_str` postcondition, so it cannot be used to prove
+`false`. To use another known-pure storage (`Arc<str>`, `SmolStr`, ...),
+grant the marker yourself — the trust is then yours, in your crate:
+
+```rust,ignore
+verus! {
+broadcast axiom fn axiom_arc_str_obeys_str_model()
+    ensures #[trigger] ThreadId::<Arc<str>>::storage_obeys_str_model();
+}
+```
+
+**What is deliberately absent.** A view-injectivity axiom (`a@ == b@ ==>
+a == b`): vstd has none for `String` either (content-equal values need not be
+the same spec value). Write specifications over views (`a@`), not values.
+
+The boundary is verified in CI against a pinned Verus release by the
+`verus-test/` crate, which doubles as a usage example.
 
 ## License
 
