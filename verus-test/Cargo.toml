@@ -17,7 +17,11 @@ edition = "2024"
 
 [dependencies]
 strkind = { path = "..", features = ["std", "serde", "verus"] }
-vstd = "=0.0.0-2026-10-04-0306"
+# Pinned to the Verus release used in CI (see ../.github/workflows/ci.yml);
+# vstd is Verus-version-coupled and the two must match. This direct dependency
+# is for this crate's own `verus! { ... }` code; the `strkind!` expansion uses
+# strkind's vstd.
+vstd = "=0.0.0-2026-09-06-0133"
 
 [package.metadata.verus]
 verify = true
@@ -27,6 +31,6 @@ verify = true
 # `assume_specification` axioms expand to unsafe-marked items, and the
 # expansion carries its own scoped `allow` (regression test for that).
 unsafe_code = "deny"
-# For the crate-root `#![cfg_attr(verus_keep_ghost, ...)]` (the cfgs inside
-# macro-emitted code carry their own scoped `allow`s and do not need this).
+# For warning-free plain-cargo builds of a `verus`-feature consumer: the
+# emitted ghost blocks are gated on `cfg(verus_keep_ghost)`.
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(verus_keep_ghost)"] }

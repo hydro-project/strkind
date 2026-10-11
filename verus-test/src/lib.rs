@@ -1,11 +1,8 @@
 //! Verifies the trust seam emitted by `strkind!` with the `verus` feature:
 //! the acceptance test from hydro-project/strkind#3.
-#![cfg_attr(verus_keep_ghost, feature(sized_hierarchy))]
 #![deny(unsafe_code)]
 
 use vstd::prelude::*;
-
-strkind::strkind_verus_decls!();
 
 strkind::strkind! {
     /// Identifies a conversation thread.

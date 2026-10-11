@@ -21,7 +21,7 @@ exclude = ["/verus-test"]
 [features]
 default = ["std", "serde"]
 # Currently just enables `alloc` (and forwards to `serde/std`).
-std = ["alloc", "serde?/std"]
+std = ["alloc", "serde?/std", "vstd?/std"]
 # Internal: an `example` module showing what `strkind!` generates, as rendered
 # documentation (enabled on docs.rs). Not part of the crate's API; do not use.
 _example = []
@@ -29,16 +29,15 @@ _example = []
 # and `ToOwned` for the borrowed form. Without it, kinds are core-only:
 # explicit storages (`Name<&str>`, `Name<heapless::String<N>>`, ...) and the
 # borrowed `&Name<str>` form still work.
-alloc = ["serde?/alloc"]
+alloc = ["serde?/alloc", "vstd?/alloc"]
 # Implement `Serialize`/`Deserialize` for generated kinds.
 serde = ["dep:serde"]
 # Emit a Verus (https://github.com/verus-lang/verus) verification boundary for
 # each kind: an uninterpreted `View` (`Seq<char>`) plus a spec for `as_str`,
-# inside `#[cfg(verus_keep_ghost)]` blocks that reference `::vstd` paths.
-# Consumers enabling this must depend on `vstd` when building under the Verus
-# driver; under plain cargo the blocks are cfg'd away and `vstd` is not needed.
-# Adds no dependencies to strkind itself.
-verus = []
+# inside `#[cfg(verus_keep_ghost)]` blocks (set only by the Verus driver, so
+# under plain cargo they compile to nothing, and vstd is built only as an
+# ordinary - ghost-erased - dependency).
+verus = ["dep:vstd"]
 
 [package.metadata.docs.rs]
 all-features = true
@@ -47,6 +46,19 @@ all-features = true
 # `1.0.95` is the minimal version that compiles on modern rustc (verified by
 # the minimal-versions check in `check.bash`).
 serde = { version = "1.0.95", default-features = false, optional = true }
+# vstd is Verus-version-coupled: the requirement below is the minimum
+# (`0.0.0-2026-09-06-0133` is the first release that specifies `&str`
+# equality, which content comparisons through `as_str` rely on), and
+# consumers should pin (via their lockfile) the vstd release matching their
+# Verus toolchain. CI verifies against the matching Verus release (see
+# `verus-test/` and .github/workflows/ci.yml).
+vstd = { version = "0.0.0-2026-09-06-0133", default-features = false, optional = true }
+
+# Lets `cargo verus` (the Verus driver) verify this crate as a dependency of
+# verified consumer crates, keeping the `#[cfg(verus_keep_ghost)]` ghost
+# declarations below (the same mechanism vstd itself uses).
+[package.metadata.verus]
+verify = true
 
 [dev-dependencies]
 serde_json = "1"

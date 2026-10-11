@@ -1,5 +1,9 @@
 #![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/", env!("CARGO_PKG_README")))]
 #![cfg_attr(docsrs, feature(doc_cfg))]
+// The `ExAsRef` declaration below needs the unstable sized-hierarchy traits
+// (`AsRef`'s own bounds use them); the Verus driver permits the feature on
+// its pinned stable toolchain (vstd itself does the same).
+#![cfg_attr(all(feature = "verus", verus_keep_ghost), feature(sized_hierarchy))]
 #![no_std]
 
 #[cfg(feature = "alloc")]
@@ -21,7 +25,25 @@ pub mod __private {
     pub use alloc::string::String;
     #[cfg(feature = "serde")]
     pub use serde;
+    #[cfg(feature = "verus")]
+    pub use vstd;
 }
+
+/// The Verus external-trait declaration for `AsRef`, which vstd does not
+/// (yet) provide. Declared here, once - Verus allows only one
+/// `external_trait_specification` per trait per crate graph, so it cannot be
+/// emitted per `strkind!` expansion. The `[package.metadata.verus]` entry in
+/// Cargo.toml makes the Verus driver keep (and export) this ghost code when
+/// strkind is a dependency of a verified crate.
+#[cfg(all(feature = "verus", verus_keep_ghost))]
+const _: () = {
+    vstd::prelude::verus! {
+        #[verifier::external_trait_specification]
+        pub trait ExAsRef<T: ::core::marker::PointeeSized>: ::core::marker::PointeeSized {
+            type ExternalTraitSpecificationFor: ::core::convert::AsRef<T>;
+        }
+    }
+};
 
 /// Define one or more string kinds.
 ///
@@ -313,63 +335,12 @@ macro_rules! __strkind_serde {
     ( $Name:ident ) => {};
 }
 
-/// Declare, **once per crate**, the [Verus](https://github.com/verus-lang/verus)
-/// external-trait specification for `AsRef` that the boundary emitted by
-/// [`strkind!`] relies on (requires strkind's `verus` feature; expands to
-/// nothing without it, so unconditional calls are fine).
-///
-/// vstd does not (yet) declare `core::convert::AsRef`, and Verus allows only
-/// one `external_trait_specification` per trait per crate, so this cannot be
-/// emitted per kind. Call it once at your crate root:
-///
-/// ```ignore
-/// // At the crate root: `AsRef`'s bounds use the unstable sized-hierarchy
-/// // traits, which the Verus driver permits (vstd does the same).
-/// #![cfg_attr(verus_keep_ghost, feature(sized_hierarchy))]
-///
-/// strkind::strkind_verus_decls!();
-/// ```
-///
-/// Skip this (and keep your own declaration) if another dependency already
-/// declares `AsRef` for Verus.
-#[cfg(feature = "verus")]
-#[macro_export]
-macro_rules! strkind_verus_decls {
-    () => {
-        // `allow` rather than `expect`: the lints fire only in some
-        // configurations (`expect` would be unfulfilled in the others), and
-        // `clippy::allow_attributes` must therefore be allowed alongside.
-        #[allow(
-            clippy::allow_attributes,
-            unexpected_cfgs,
-            reason = "`verus_keep_ghost` is set by the Verus driver; plain-cargo consumers need not declare it"
-        )]
-        const _: () = {
-            #[cfg(verus_keep_ghost)]
-            ::vstd::prelude::verus! {
-                #[verifier::external_trait_specification]
-                pub trait ExAsRef<T: ::core::marker::PointeeSized>: ::core::marker::PointeeSized {
-                    type ExternalTraitSpecificationFor: ::core::convert::AsRef<T>;
-                }
-            }
-        };
-    };
-}
-
-/// Empty without the `verus` feature; see the `verus`-enabled docs.
-#[cfg(not(feature = "verus"))]
-#[macro_export]
-macro_rules! strkind_verus_decls {
-    () => {};
-}
-
 /// Verus verification boundary for a generated kind - expands to empty
 /// without the `verus` feature. Not a public API.
 ///
 /// Emits, inside `#[cfg(verus_keep_ghost)]` (set only by the Verus driver, so
-/// plain-cargo consumers compile none of this - but the consumer must have
-/// `vstd` as a dependency when verifying, since the emitted paths reference
-/// `::vstd`):
+/// plain-cargo consumers compile none of this; the referenced vstd is
+/// strkind's own feature-gated dependency, via `$crate::__private`):
 ///
 /// 1. an opaque external-type proxy (`external_type_specification`), so Verus
 ///    accepts specifications for the kind;
@@ -417,7 +388,7 @@ macro_rules! __strkind_verus {
         )]
         const _: () = {
             #[cfg(verus_keep_ghost)]
-            ::vstd::prelude::verus! {
+            $crate::__private::vstd::prelude::verus! {
                 #[verifier::external_type_specification]
                 #[verifier::external_body]
                 #[verifier::reject_recursive_types(T)]
@@ -426,11 +397,11 @@ macro_rules! __strkind_verus {
         };
 
         #[cfg(verus_keep_ghost)]
-        ::vstd::prelude::verus! {
-            impl<T: ?Sized + AsRef<str>> ::vstd::view::View for $Name<T> {
-                type V = ::vstd::seq::Seq<char>;
+        $crate::__private::vstd::prelude::verus! {
+            impl<T: ?Sized + AsRef<str>> $crate::__private::vstd::view::View for $Name<T> {
+                type V = $crate::__private::vstd::seq::Seq<char>;
 
-                uninterp spec fn view(&self) -> ::vstd::seq::Seq<char>;
+                uninterp spec fn view(&self) -> $crate::__private::vstd::seq::Seq<char>;
             }
 
             impl<T: ?Sized + AsRef<str>> $Name<T> {
@@ -461,7 +432,7 @@ macro_rules! __strkind_verus {
         )]
         const _: () = {
             #[cfg(verus_keep_ghost)]
-            ::vstd::prelude::verus! {
+            $crate::__private::vstd::prelude::verus! {
                 $vis assume_specification<T: ?Sized + AsRef<str>>[ $Name::<T>::as_str ](id: &$Name<T>) -> (s: &str)
                     ensures $Name::<T>::storage_obeys_str_model() ==> s@ == id@;
             }
@@ -488,7 +459,7 @@ macro_rules! __strkind_verus {
 macro_rules! __strkind_verus_alloc {
     ( $vis:vis $Name:ident ) => {
         #[cfg(verus_keep_ghost)]
-        ::vstd::prelude::verus! {
+        $crate::__private::vstd::prelude::verus! {
             impl $Name<$crate::__private::String> {
                 /// Axiom (trusted): `String`'s `AsRef<str>` is pure.
                 $vis broadcast axiom fn axiom_string_storage_obeys_str_model()

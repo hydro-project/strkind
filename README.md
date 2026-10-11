@@ -95,7 +95,7 @@ themselves.
 | `std`   | Currently just enables `alloc` (and forwards to `serde/std`). |
 | `alloc` | The `alloc`-backed API: the `String` **default** storage parameter, `From<&str>`/`From<String>`, and `ToOwned` for the borrowed form (also forwards to `serde/alloc`). |
 | `serde` | `Serialize`/`Deserialize` for generated kinds.    |
-| `verus` | A [Verus](https://github.com/verus-lang/verus) verification boundary for generated kinds (see below). Adds no dependencies; zero cost under plain cargo. |
+| `verus` | A [Verus](https://github.com/verus-lang/verus) verification boundary for generated kinds (see below). Adds a feature-gated `vstd` dependency; ghost code compiles away under plain cargo. |
 
 The default features are `std` and `serde` (and therefore `alloc`, via
 `std`).
@@ -113,25 +113,20 @@ emitted through helper macros that are themselves `cfg`-gated inside strkind.
 With the `verus` feature, `strkind!` additionally emits a
 [Verus](https://github.com/verus-lang/verus) verification boundary for each
 kind, so verified code can call `as_str` and reason about kinds by their
-string content. The emission sits inside `#[cfg(verus_keep_ghost)]` blocks —
-set only by the Verus driver — so under plain cargo the feature compiles to
-nothing and `vstd` is not needed. When verifying, the consumer crate must
-depend on [`vstd`](https://crates.io/crates/vstd) (the emitted specifications
-reference `::vstd` paths) and needs two lines of setup:
+string content. The feature adds [`vstd`](https://crates.io/crates/vstd) as a
+dependency of strkind (vstd is Verus-version-coupled: strkind declares a
+minimum, so pin the release matching your Verus toolchain in your lockfile).
+The emission sits inside `#[cfg(verus_keep_ghost)]` blocks — set only by the
+Verus driver — so under plain cargo the feature compiles to nothing beyond
+building vstd as an ordinary (ghost-erased) dependency. No other setup:
+strkind itself carries the Verus declarations the boundary needs (such as the
+external-trait specification for `AsRef`, which vstd does not yet provide),
+exported to consumers through the driver like vstd's own.
 
-```rust,ignore
-// At the crate root: `AsRef`'s bounds use the unstable sized-hierarchy
-// traits, which the Verus driver permits (vstd itself does the same).
-#![cfg_attr(verus_keep_ghost, feature(sized_hierarchy))]
-
-// Once per crate: the external-trait declaration for `AsRef`, which vstd
-// does not (yet) provide. Skip if another dependency already declares it.
-strkind::strkind_verus_decls!();
-```
-
-(Also declare `unexpected_cfgs = { level = "warn", check-cfg =
-["cfg(verus_keep_ghost)"] }` under `[lints.rust]` to keep plain-cargo builds
-warning-free.)
+(If you write your own `#[cfg(verus_keep_ghost)]` code, declare
+`unexpected_cfgs = { level = "warn", check-cfg = ["cfg(verus_keep_ghost)"] }`
+under `[lints.rust]` to keep plain-cargo builds warning-free; strkind's
+emitted blocks carry their own scoped `allow`s.)
 
 Each kind `Name` then carries, for every storage `T`:
 
