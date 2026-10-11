@@ -52,7 +52,7 @@ serde = { version = "1.0.95", default-features = false, optional = true }
 # consumers should pin (via their lockfile) the vstd release matching their
 # Verus toolchain. CI verifies against the matching Verus release (see
 # `verus-test/` and .github/workflows/ci.yml).
-vstd = { version = "0.0.0-2026-09-06-0133", default-features = false, optional = true }
+vstd = { version = ">=0.0.0-2026-09-06-0133", default-features = false, optional = true }
 
 # Lets `cargo verus` (the Verus driver) verify this crate as a dependency of
 # verified consumer crates, keeping the `#[cfg(verus_keep_ghost)]` ghost
