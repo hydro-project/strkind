@@ -373,6 +373,19 @@ macro_rules! __strkind_serde {
 /// The feature is resolved when _strkind_ is compiled (the two definitions
 /// below are `cfg`-gated), so downstream expansions of [`strkind!`] follow
 /// strkind's feature rather than the downstream crate's.
+///
+/// `verus_keep_ghost`, by contrast, must be resolved in the *invoking* crate
+/// (hence the emitted `#[cfg]`s): in a verified build, crates without
+/// `[package.metadata.verus]` are compiled without it, as plain Rust, even
+/// though strkind and vstd are compiled with it, and `verus!` erases ghost
+/// code according to the invoking crate's cfg. A consequence: a `cfg` emitted
+/// by a macro is checked against the invoking crate's declared cfgs, and the
+/// module-scope blocks below cannot carry an `allow(unexpected_cfgs)` (an
+/// `allow` on the `cfg`'d item itself does not suppress the lint, and a
+/// `const` wrapper would break Verus impl paths). So every crate expanding
+/// [`strkind!`] with the `verus` feature must declare
+/// `check-cfg = ["cfg(verus_keep_ghost)"]` (documented in the README). The
+/// `const`-scoped blocks still `allow` it, which is harmless.
 #[cfg(feature = "verus")]
 #[doc(hidden)]
 #[macro_export]
@@ -384,7 +397,7 @@ macro_rules! __strkind_verus {
         #[allow(
             clippy::allow_attributes,
             unexpected_cfgs,
-            reason = "`verus_keep_ghost` is set by the Verus driver; plain-cargo consumers need not declare it"
+            reason = "`verus_keep_ghost` is set by the Verus driver"
         )]
         const _: () = {
             #[cfg(verus_keep_ghost)]
@@ -428,7 +441,7 @@ macro_rules! __strkind_verus {
             clippy::allow_attributes,
             unexpected_cfgs,
             unsafe_code,
-            reason = "`verus_keep_ghost` is set by the Verus driver (plain-cargo consumers need not declare it), and the trusted `assume_specification` axiom expands to unsafe-marked items"
+            reason = "`verus_keep_ghost` is set by the Verus driver, and the trusted `assume_specification` axiom expands to unsafe-marked items"
         )]
         const _: () = {
             #[cfg(verus_keep_ghost)]

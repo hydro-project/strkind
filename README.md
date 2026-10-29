@@ -118,15 +118,28 @@ dependency of strkind (vstd is Verus-version-coupled: strkind declares a
 minimum, so pin the release matching your Verus toolchain in your lockfile).
 The emission sits inside `#[cfg(verus_keep_ghost)]` blocks — set only by the
 Verus driver — so under plain cargo the feature compiles to nothing beyond
-building vstd as an ordinary (ghost-erased) dependency. No other setup:
-strkind itself carries the Verus declarations the boundary needs (such as the
-external-trait specification for `AsRef`, which vstd does not yet provide),
-exported to consumers through the driver like vstd's own.
+building vstd as an ordinary (ghost-erased) dependency. strkind itself
+carries the Verus declarations the boundary needs (such as the external-trait
+specification for `AsRef`, which vstd does not yet provide), exported to
+consumers through the driver like vstd's own.
 
-(If you write your own `#[cfg(verus_keep_ghost)]` code, declare
-`unexpected_cfgs = { level = "warn", check-cfg = ["cfg(verus_keep_ghost)"] }`
-under `[lints.rust]` to keep plain-cargo builds warning-free; strkind's
-emitted blocks carry their own scoped `allow`s.)
+The one piece of setup: when strkind's `verus` feature is enabled anywhere
+in the build (cargo unifies features, so this includes crates that did not
+enable it themselves), every crate that invokes `strkind!` must declare the
+cfg, or plain-cargo builds warn (`unexpected_cfgs`) about the emitted
+`#[cfg(verus_keep_ghost)]` blocks:
+
+```toml
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(verus_keep_ghost)"] }
+```
+
+(A `cfg` emitted by a macro is checked against the invoking crate's declared
+cfgs, and the boundary's impls must sit at module scope, where strkind
+cannot attach an `allow`. The cfg also cannot be resolved inside strkind
+instead: a non-verified crate in a verified build expands `strkind!` as plain
+Rust, so it must see the cfg as unset even when strkind is compiled by the
+driver.)
 
 Each kind `Name` then carries, for every storage `T`:
 
