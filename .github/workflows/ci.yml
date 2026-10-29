@@ -53,8 +53,8 @@ jobs:
         with:
           tool: cargo-msrv
 
-        - name: Run check.bash
-          run: ./check.bash
+      - name: Run check.bash
+        run: ./check.bash
 
   verus:
     name: Verus
