@@ -1,10 +1,12 @@
 # Verification test for strkind's `verus` feature. Not published; excluded
-# from the strkind package. Verified by `cargo verus verify` (see ../check.bash
-# and CI), and also built under plain cargo to prove a `verus`-feature-enabled
-# consumer compiles warning-free without the Verus driver.
+# from the strkind package. Verified by `cargo verus verify` (run in Docker by
+# ../scripts/verus-verify.sh, from ../check.bash and CI), and also built under
+# plain cargo to prove a `verus`-feature-enabled consumer compiles
+# warning-free without the Verus driver.
 #
-# The `vstd` version is pinned to the Verus release used in CI; the two must
-# match (vstd is Verus-version-coupled).
+# The `vstd` version is pinned to the Verus release in
+# ../scripts/verus-verify.sh; the two must match (vstd is Verus-version-coupled;
+# ../check.bash checks this).
 
 [package]
 name = "strkind-verus-test"
@@ -17,7 +19,7 @@ edition = "2024"
 
 [dependencies]
 strkind = { path = "..", features = ["std", "serde", "verus"] }
-# Pinned to the Verus release used in CI (see ../.github/workflows/ci.yml);
+# Pinned to the Verus release in ../scripts/verus-verify.sh;
 # vstd is Verus-version-coupled and the two must match. This direct dependency
 # is for this crate's own `verus! { ... }` code; the `strkind!` expansion uses
 # strkind's vstd.

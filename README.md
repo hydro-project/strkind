@@ -92,8 +92,8 @@ themselves.
 
 | Feature | Effect                                            |
 |---------|---------------------------------------------------|
-| `std`   | Currently just enables `alloc` (and forwards to `serde/std`). |
-| `alloc` | The `alloc`-backed API: the `String` **default** storage parameter, `From<&str>`/`From<String>`, and `ToOwned` for the borrowed form (also forwards to `serde/alloc`). |
+| `std`   | Enables `alloc`, and `std` support in optional dependencies. |
+| `alloc` | The `alloc`-backed API: the `String` **default** storage parameter, `From<&str>`/`From<String>`, and `ToOwned` for the borrowed form. |
 | `serde` | `Serialize`/`Deserialize` for generated kinds.    |
 | `verus` | A [Verus](https://github.com/verus-lang/verus) verification boundary for generated kinds (see below). Adds a feature-gated `vstd` dependency; ghost code compiles away under plain cargo. |
 
@@ -153,6 +153,12 @@ fn same_id(a: &ThreadId, b: &ThreadId) -> (r: bool)
 }
 ```
 
+The purity axioms are `broadcast` axioms, so bring them into scope with
+`broadcast use`. Doing so **inside each function** that needs them, as above,
+always works. A module-level `broadcast use` in the same module as the
+`strkind!` invocation does not: Verus reports a definition cycle with the
+kind's own emitted items.
+
 **What is trusted.** One definitional axiom per kind (the view *is* whatever
 `as_str` returns — byte-for-byte the shape of vstd's own `String::as_str`
 axiom) plus two ground purity facts (`String`'s and `str`'s `AsRef<str>`
@@ -174,8 +180,17 @@ broadcast axiom fn axiom_arc_str_obeys_str_model()
 a == b`): vstd has none for `String` either (content-equal values need not be
 the same spec value). Write specifications over views (`a@`), not values.
 
+**Compatibility caveat.** strkind declares Verus's external-trait
+specification for `AsRef`, of which Verus allows only one per crate graph. A
+future vstd that ships its own would conflict until strkind drops its
+declaration, and two semver-incompatible strkind versions with `verus`
+enabled cannot be verified in the same graph.
+
 The boundary is verified in CI against a pinned Verus release by the
-`verus-test/` crate, which doubles as a usage example.
+`verus-test/` crate, which doubles as a usage example. To run the
+verification locally, use `./scripts/verus-verify.sh` (needs Docker; it
+downloads the pinned Verus release and z3) or run `cargo verus verify` in
+`verus-test/` with a matching Verus toolchain on your `PATH`.
 
 ## License
 

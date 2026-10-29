@@ -20,7 +20,7 @@ exclude = ["/verus-test"]
 
 [features]
 default = ["std", "serde"]
-# Currently just enables `alloc` (and forwards to `serde/std`).
+# Enables `alloc`, and `std` support in optional dependencies.
 std = ["alloc", "serde?/std", "vstd?/std"]
 # Internal: an `example` module showing what `strkind!` generates, as rendered
 # documentation (enabled on docs.rs). Not part of the crate's API; do not use.
@@ -51,7 +51,14 @@ serde = { version = "1.0.95", default-features = false, optional = true }
 # equality, which content comparisons through `as_str` rely on), and
 # consumers should pin (via their lockfile) the vstd release matching their
 # Verus toolchain. CI verifies against the matching Verus release (see
-# `verus-test/` and .github/workflows/ci.yml).
+# `verus-test/` and `scripts/verus-verify.sh`).
+#
+# Forward-compat caveat of the open-ended range: strkind declares the
+# `external_trait_specification` for `AsRef` (src/lib.rs), and Verus allows
+# only one per trait per crate graph. If a future vstd ships its own, this
+# declaration must be removed (and the floor raised to that vstd); until then
+# such a vstd fails under the Verus driver. Likewise, two semver-incompatible
+# strkind versions with `verus` enabled cannot coexist in one verified graph.
 vstd = { version = ">=0.0.0-2026-09-06-0133", default-features = false, optional = true }
 
 # Lets `cargo verus` (the Verus driver) verify this crate as a dependency of
