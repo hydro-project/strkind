@@ -55,3 +55,30 @@ jobs:
 
       - name: Run check.bash
         run: ./check.bash
+        env:
+          # Verified by the separate `verus` job.
+          SKIP_VERUS_VERIFY: 1
+  verus:
+    name: Verus
+    if: ${{ needs.pre_job.outputs.should_skip != 'true' || github.event_name != 'pull_request' }}
+    # Pinned (not `-latest`): the job runs in the container image pinned by
+    # scripts/verus-verify.sh, but a moving host image is needless churn.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    needs: pre_job
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      # The pins (Verus, z3, Rust image) live in scripts/verus-verify.sh; its
+      # download directory is versioned, so keying on the script's hash is
+      # enough to invalidate on a bump.
+      - name: Cache the Verus release and z3
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/strkind-verus
+          key: strkind-verus-${{ hashFiles('scripts/verus-verify.sh') }}
+
+      - name: Verify verus-test with the Verus driver
+        run: ./scripts/verus-verify.sh

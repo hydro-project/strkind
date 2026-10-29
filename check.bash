@@ -21,6 +21,9 @@ FEATURE_COMBOS=(
     'alloc,serde'
     'std'
     'std,serde'
+    'verus'
+    'alloc,verus'
+    'std,serde,verus'
 )
 
 step 'Prerequisites'
@@ -59,6 +62,51 @@ pass 'All tests passed in every feature combination'
 step 'Docs (warnings denied)'
 RUSTDOCFLAGS='-D warnings' cargo doc --no-deps --all-features || fail 'rustdoc warnings found'
 pass 'Docs build cleanly'
+
+step 'Verus verification test crate (verus-test/)'
+# verus-test is its own workspace, so the steps above do not cover it.
+(cd verus-test && cargo fmt --check > /dev/null 2>&1) \
+    || fail "verus-test formatting issues found (run 'cargo fmt' in verus-test/ to fix)"
+(cd verus-test && cargo clippy --all-targets -- -D warnings) || fail 'clippy warnings found (verus-test)'
+# A `verus`-feature consumer must compile warning-free under plain cargo
+# (the ghost blocks are cfg'd away; vstd compiles as an ordinary dependency).
+(cd verus-test && cargo check --all-targets) || fail 'plain-cargo check of verus-test failed'
+pass 'verus-test is formatted, clippy-clean, and compiles under plain cargo'
+
+# Version pins must agree: a Verus release can only compile the vstd it
+# shipped with. scripts/verus-verify.sh holds the Verus pin; vstd versions
+# carry the same date (Verus `0.YYYY.MM.DD.<hash>` <-> vstd
+# `0.0.0-YYYY-MM-DD-<time>`).
+lock_vstd() { grep -A1 '^name = "vstd"$' "$1" | sed -n 's/^version = "\(.*\)"$/\1/p'; }
+VERUS_VERSION=$(./scripts/verus-verify.sh --print-versions | sed -n 's/^VERUS_VERSION=//p')
+VERUS_DATE=$(echo "$VERUS_VERSION" | sed -n 's/^0\.\([0-9]*\)\.\([0-9]*\)\.\([0-9]*\)\..*$/\1-\2-\3/p')
+VSTD_PIN=$(sed -n 's/^vstd = "=\(.*\)"$/\1/p' verus-test/Cargo.toml)
+[ -n "$VERUS_DATE" ] || fail "cannot parse VERUS_VERSION ('$VERUS_VERSION') in scripts/verus-verify.sh"
+[ -n "$VSTD_PIN" ] || fail 'cannot find the `vstd = "=..."` pin in verus-test/Cargo.toml'
+case "$VSTD_PIN" in
+    "0.0.0-$VERUS_DATE-"*) ;;
+    *) fail "vstd pin $VSTD_PIN (verus-test/Cargo.toml) does not match Verus $VERUS_VERSION (scripts/verus-verify.sh)" ;;
+esac
+for lock in Cargo.lock verus-test/Cargo.lock; do
+    [ "$(lock_vstd "$lock")" = "$VSTD_PIN" ] \
+        || fail "$lock locks vstd $(lock_vstd "$lock"), expected the pin $VSTD_PIN (verus-test/Cargo.toml)"
+done
+pass "Verus pins agree (Verus $VERUS_VERSION, vstd $VSTD_PIN)"
+
+# Actual verification needs the Verus toolchain: run in Docker via the script
+# (CI runs it as a separate job, setting SKIP_VERUS_VERIFY), or directly when
+# a matching `cargo-verus` is on PATH; skipped (loudly) otherwise.
+if [ -n "${SKIP_VERUS_VERIFY:-}" ]; then
+    echo "skipped: Verus verification (SKIP_VERUS_VERIFY is set)"
+elif command -v docker > /dev/null 2>&1 && docker info > /dev/null 2>&1; then
+    ./scripts/verus-verify.sh || fail 'Verus verification failed'
+    pass 'verus-test verifies under the Verus driver (Docker)'
+elif command -v cargo-verus > /dev/null 2>&1; then
+    (cd verus-test && cargo verus verify) || fail 'Verus verification failed'
+    pass 'verus-test verifies under the Verus driver'
+else
+    echo -e "${RED}skipped:${RESET} neither Docker nor \`cargo-verus\` found; Verus verification not run (CI runs it)"
+fi
 
 step 'MSRV (rust-version in Cargo.toml)'
 cargo msrv verify || fail 'MSRV verification failed'
