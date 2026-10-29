@@ -1,7 +1,7 @@
 [package]
 name = "strkind"
 publish = true
-version = "0.0.1"
+version = "0.0.2"
 documentation = "https://docs.rs/strkind/"
 repository = "https://github.com/hydro-project/strkind"
 readme = "README.md"
